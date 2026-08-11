@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="シマエナガを操作してタカから逃げるミニゲーム">
+  <title>シマエナガ・サバイバル</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef9ff; color: #17324d; font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    main { width: min(100%, 880px); padding: 24px 16px; }
+    h1 { margin: 0; text-align: center; font-size: clamp(1.5rem, 4vw, 2.2rem); }
+    .help { margin: 8px 0 16px; text-align: center; }
+    .game-wrap { position: relative; overflow: hidden; border: 5px solid #fff; border-radius: 16px; box-shadow: 0 12px 30px rgba(35, 94, 132, .2); }
+    canvas { display: block; width: 100%; height: auto; background: #88ddff; }
+    #time { position: absolute; right: 12px; top: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>シマエナガ・サバイバル</h1>
+    <p class="help">スペースキー／↑キーでジャンプ。タカをよけて長く生きのびよう！</p>
+    <div class="game-wrap">
+      <div id="time" aria-live="polite">Time: 0.0s</div>
+      <canvas id="game" width="800" height="400" aria-label="シマエナガ・サバイバルゲーム"></canvas>
+    </div>
+  </main>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const timeDisplay = document.getElementById('time');
+    const birdImg = new Image();
+    birdImg.src = 'Copilot_20260720_095903.png';
+    const hawkImg = new Image();
+    hawkImg.src = 'Copilot_20260720_095907.png';
+
+    let lastTime = 0;
+    let elapsed = 0;
+    let gameOver = false;
+    let lastSpawn = 0;
+    const enemies = [];
+    const player = { x: 100, y: 300, width: 80, height: 60, vy: 0, gravity: 0.6, jumpPower: -18, onGround: true };
+
+    window.addEventListener('keydown', (event) => {
+      if (['Space', 'ArrowUp'].includes(event.code)) event.preventDefault();
+      if (['Space', 'ArrowUp'].includes(event.code) && player.onGround && !gameOver) {
+        player.vy = player.jumpPower;
+        player.onGround = false;
+      }
+      if (gameOver && event.code === 'Enter') restart();
+    });
+
+    function spawnEnemy() {
+      enemies.push({ x: canvas.width + 20, y: 320, width: 80, height: 80, vx: -6 });
+    }
+
+    function update(delta) {
+      if (gameOver) return;
+      elapsed += delta / 1000;
+      timeDisplay.textContent = `Time: ${elapsed.toFixed(1)}s`;
+      player.vy += player.gravity;
+      player.y += player.vy;
+      if (player.y >= 320) {
+        player.y = 320;
+        player.vy = 0;
+        player.onGround = true;
+      }
+      if (performance.now() - lastSpawn > 1500) {
+        spawnEnemy();
+        lastSpawn = performance.now();
+      }
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].x += enemies[i].vx;
+        if (enemies[i].x + enemies[i].width < 0) enemies.splice(i, 1);
+      }
+      if (enemies.some((enemy) => isColliding(player, enemy))) gameOver = true;
+    }
+
+    function isColliding(a, b) {
+      return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+
+    function draw() {
+      const isNight = elapsed >= 20 && elapsed < 40;
+      ctx.fillStyle = isNight ? '#001a33' : '#88ddff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#55aa55';
+      ctx.fillRect(0, 360, canvas.width, 40);
+      if (birdImg.complete && birdImg.naturalWidth) ctx.drawImage(birdImg, player.x, player.y - player.height + 10, player.width, player.height);
+      else { ctx.fillStyle = '#fff'; ctx.fillRect(player.x, player.y - player.height + 10, player.width, player.height); }
+      for (const enemy of enemies) {
+        if (hawkImg.complete && hawkImg.naturalWidth) ctx.drawImage(hawkImg, enemy.x, enemy.y - enemy.height + 10, enemy.width, enemy.height);
+        else { ctx.fillStyle = '#814a2a'; ctx.fillRect(enemy.x, enemy.y - enemy.height + 10, enemy.width, enemy.height); }
+      }
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, .55)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 32px sans-serif';
+        ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = '24px sans-serif';
+        ctx.fillText(`Survived: ${elapsed.toFixed(1)}s`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Enterキーでリスタート', canvas.width / 2, canvas.height / 2 + 60);
+      }
+    }
+
+    function loop(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime;
+      lastTime = timestamp;
+      update(delta); draw(); requestAnimationFrame(loop);
+    }
+    function restart() {
+      elapsed = 0; enemies.length = 0;
+      Object.assign(player, { x: 100, y: 300, vy: 0, onGround: true });
+      gameOver = false; lastSpawn = performance.now();
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
